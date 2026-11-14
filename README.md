@@ -61,6 +61,7 @@ python solver.py data/sample1.csv submission.json 8000 --seed=42
 ```
 
 ---
+![Uploading image.png…]()
 
 ## 📁 Repository Structure
 
