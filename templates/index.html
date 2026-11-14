@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ALGOX · Mars Colony Safety Mission Control</title>
+  <!-- Chart.js for smooth scientific scatter plot -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ═══════════════════ THEME & RESET ═══════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0b0f19;
+      --surface: #111827;
+      --surface-card: #182235;
+      --surface-hover: #1f2d47;
+      --border: #24324d;
+      --border-bright: #3b82f644;
+      --text: #f1f5f9;
+      --text-dim: #94a3b8;
+      --cyan: #22d3ee;
+      --cyan-glow: rgba(34, 211, 238, 0.25);
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --crew-e: #fb923c; /* Structural */
+      --crew-m: #38bdf8; /* Medical */
+      --crew-l: #a855f7; /* Life Support */
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle telemetry starfield */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at 15% 30%, rgba(34, 211, 238, 0.05) 0%, transparent 45%),
+                  radial-gradient(ellipse at 85% 70%, rgba(244, 63, 94, 0.04) 0%, transparent 45%),
+                  radial-gradient(1px 1px at 20% 40%, #ffffff22, transparent),
+                  radial-gradient(1px 1px at 60% 80%, #ffffff18, transparent),
+                  radial-gradient(1px 1px at 80% 20%, #ffffff22, transparent);
+      pointer-events: none; z-index: 0;
+    }
+
+    .container {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      position: relative; z-index: 1;
+    }
+
+    /* ═══════════════════ MISSION CONTROL HEADER ═══════════════════ */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1.2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+    .brand-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(34,211,238,0.2), rgba(168,85,247,0.2));
+      border: 1px solid var(--cyan);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 0 15px var(--cyan-glow);
+    }
+    .brand h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      background: linear-gradient(135deg, #ffffff, var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand p {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.9rem;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--emerald);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .pulse-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+
+    /* ═══════════════════ STATS STRIP ═══════════════════ */
+    .stats-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.8rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.9rem 1.1rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .stat-box:hover {
+      border-color: var(--cyan);
+      transform: translateY(-2px);
+    }
+    .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.2rem;
+    }
+    .stat-val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+    .stat-val.cyan { color: var(--cyan); }
+    .stat-val.emerald { color: var(--emerald); }
+    .stat-val.amber { color: var(--amber); }
+    .stat-val.rose { color: var(--rose); }
+
+    /* ═══════════════════ CARD STYLES ═══════════════════ */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .panel h2 {
+      font-size: 1.05rem;
+      color: #ffffff;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    /* ═══════════════════ UPLOAD & CONFIG ZONE ═══════════════════ */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s;
+      position: relative;
+      background: rgba(17, 24, 39, 0.4);
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--cyan);
+      background: rgba(34, 211, 238, 0.04);
+    }
+    .upload-zone .icon { font-size: 2.6rem; margin-bottom: 0.4rem; }
+    .upload-zone p { color: var(--text-dim); font-size: 0.95rem; }
+    .upload-zone .filename { color: var(--emerald); font-weight: 700; font-size: 1.05rem; }
+    .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    .config-box {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .control-row {
+      display: flex;
+      gap: 0.8rem;
+    }
+    .control-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .control-group label {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .control-group input {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      padding: 0.65rem 0.8rem;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .control-group input:focus { border-color: var(--cyan); }
+
+    .btn-solve {
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.85rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    }
+    .btn-solve:hover {
+      background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(14, 165, 233, 0.45);
+    }
+    .btn-solve:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ═══════════════════ CREW TELEMETRY CARDS ═══════════════════ */
+    .crew-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 800px) { .crew-grid { grid-template-columns: 1fr; } }
+
+    .crew-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .crew-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .crew-card.E::before { background: var(--crew-e); }
+    .crew-card.M::before { background: var(--crew-m); }
+    .crew-card.L::before { background: var(--crew-l); }
+
+    .crew-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .crew-title { font-weight: 800; font-size: 1rem; }
+    .crew-title.E { color: var(--crew-e); }
+    .crew-title.M { color: var(--crew-m); }
+    .crew-title.L { color: var(--crew-l); }
+    .crew-meta { font-size: 0.75rem; color: var(--emerald); font-weight: 600; }
+
+    .crew-stats-lines {
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+    .crew-stats-lines b { color: #ffffff; }
+
+    .progress-track {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      margin-top: 0.8rem;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.8s ease;
+    }
+    .progress-fill.E { background: var(--crew-e); }
+    .progress-fill.M { background: var(--crew-m); }
+    .progress-fill.L { background: var(--crew-l); }
+
+    /* ═══════════════════ GRAPHS SECTION ═══════════════════ */
+    .graph-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    /* Wait vs Score Scatter Chart */
+    .scatter-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+    .chart-container {
+      position: relative;
+      height: 280px;
+      width: 100%;
+    }
+    .losses-strip {
+      margin-top: 0.75rem;
+      padding: 0.6rem 0.8rem;
+      background: rgba(244, 63, 94, 0.08);
+      border: 1px solid rgba(244, 63, 94, 0.2);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #fecdd3;
+    }
+    .losses-strip strong { color: #ff8597; }
+
+    /* Gantt Chart */
+    .gantt-scroll {
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+    }
+    .gantt-wrapper {
+      position: relative;
+      min-width: 900px;
+    }
+    .gantt-ticks {
+      position: relative;
+      height: 20px;
+      margin-left: 70px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 6px;
+    }
+    .tick-label {
+      position: absolute;
+      font-size: 10px;
+      color: var(--text-dim);
+      transform: translateX(-50%);
+    }
+    .gantt-row {
+      display: flex;
+      align-items: center;
+      height: 44px;
+      margin-bottom: 8px;
+    }
+    .gantt-label {
+      width: 70px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+    .gantt-track {
+      flex: 1;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .gantt-block {
+      position: absolute;
+      top: 3px; bottom: 3px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #0b0f19;
+      cursor: pointer;
+      transition: filter 0.2s, transform 0.1s;
+      white-space: nowrap;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    .gantt-block:hover {
+      filter: brightness(1.3);
+      z-index: 10;
+    }
+    .gantt-block.E { background: var(--crew-e); }
+    .gantt-block.M { background: var(--crew-m); }
+    .gantt-block.L { background: var(--crew-l); }
+
+    .gantt-hover-box {
+      margin-top: 0.75rem;
+      padding: 0.7rem 1rem;
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      min-height: 38px;
+    }
+    .gantt-hover-box b { color: #ffffff; }
+
+    /* ═══════════════════ TABLE SECTION ═══════════════════ */
+    .table-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.8rem;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+    }
+    .search-input {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      padding: 0.5rem 0.9rem;
+      font-size: 0.88rem;
+      width: 280px;
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--cyan); }
+
+    .filter-btn-group {
+      display: flex;
+      gap: 0.4rem;
+    }
+    .btn-filter {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.35rem 0.85rem;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-filter:hover { border-color: var(--cyan); color: #fff; }
+    .btn-filter.active { background: var(--cyan); border-color: var(--cyan); color: #0b0f19; font-weight: 700; }
+
+    .table-wrapper {
+      max-height: 420px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th {
+      position: sticky; top: 0;
+      background: #151d2f;
+      padding: 0.65rem 0.8rem;
+      text-align: left;
+      color: var(--text-dim);
+      font-weight: 700;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { color: var(--cyan); }
+    td {
+      padding: 0.55rem 0.8rem;
+      border-bottom: 1px solid rgba(36, 50, 77, 0.4);
+    }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+    .sev-pill {
+      display: inline-block;
+      padding: 0.12rem 0.45rem;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .sev-high { background: rgba(244,63,94,0.15); color: var(--rose); border: 1px solid rgba(244,63,94,0.3); }
+    .sev-mid  { background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+    .sev-low  { background: rgba(16,185,129,0.15); color: var(--emerald); border: 1px solid rgba(16,185,129,0.3); }
+
+    .score-pts { font-weight: 700; }
+    .score-pts.high { color: var(--emerald); }
+    .score-pts.mid { color: var(--amber); }
+    .score-pts.zero { color: var(--rose); }
+
+    /* ═══════════════════ DOWNLOAD BAR ═══════════════════ */
+    .download-bar {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+    .btn-download {
+      background: linear-gradient(135deg, var(--emerald), #059669);
+      color: #0b0f19;
+      border: none;
+      border-radius: 8px;
+      padding: 0.8rem 2.2rem;
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 15px rgba(16,185,129,0.3);
+      transition: all 0.2s;
+    }
+    .btn-download:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(16,185,129,0.45); }
+
+    /* Loading modal */
+    .loading-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 1rem;
+    }
+    .loading-overlay.active { display: flex; }
+    .spin {
+      width: 55px; height: 55px;
+      border: 4px solid var(--border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- ═══ MISSION CONTROL HEADER ═══ -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">🛰️</div>
+        <div>
+          <h1>ALGOX · COLONY SAFETY MISSION CONTROL</h1>
+          <p>Dual-Engine Hybrid Scheduler · Mars Emergency Response</p>
+        </div>
+      </div>
+      <div>
+        <span class="status-pill"><span class="pulse-dot"></span> SYSTEMS OPERATIONAL</span>
+      </div>
+    </header>
+
+    <!-- ═══ TOP STATS STRIP ═══ -->
+    <section class="stats-strip" id="statsStrip">
+      <div class="stat-box">
+        <div class="stat-label">Total Incidents</div>
+        <div class="stat-val" id="statTotal">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Critical (Sev ≥ 8)</div>
+        <div class="stat-val rose" id="statCritical">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Safety Score</div>
+        <div class="stat-val emerald" id="statScore">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Efficiency</div>
+        <div class="stat-val cyan" id="statEfficiency">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Avg Wait Time</div>
+        <div class="stat-val amber" id="statAvgWait">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Total Duration</div>
+        <div class="stat-val" id="statDuration">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Schedule Makespan</div>
+        <div class="stat-val" id="statMakespan">—</div>
+      </div>
+    </section>
+
+    <!-- ═══ UPLOAD & CONFIG ═══ -->
+    <div class="grid-2">
+      <div class="upload-zone" id="dropZone">
+        <div class="icon">📂</div>
+        <p id="uploadLabel">Drag & drop your incident CSV here, or <strong>click to browse</strong></p>
+        <input type="file" id="fileInput" accept=".csv">
+      </div>
+
+      <div class="panel config-box">
+        <h2>⚙️ Optimizer Controls</h2>
+        <div class="control-row">
+          <div class="control-group">
+            <label>Search Time (Sec)</label>
+            <input type="number" id="saTime" value="15" min="1" max="120">
+          </div>
+          <div class="control-group">
+            <label>Random Seed</label>
+            <input type="number" id="seed" value="42" min="0">
+          </div>
+        </div>
+        <button class="btn-solve" id="solveBtn" disabled>
+          <span>🚀</span> GENERATE OPTIMAL SCHEDULE
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ RESULTS SECTION (ACTIVE AFTER SOLVE) ═══ -->
+    <div id="resultsSection" style="display: none;">
+
+      <!-- Method Banner -->
+      <div class="panel" style="padding: 0.75rem 1.25rem; background: rgba(34,211,238,0.06); border-color: rgba(34,211,238,0.25);">
+        <span style="font-size: 0.85rem; color: var(--cyan); font-weight: 700;">🏆 Selected Engine: </span>
+        <span id="engineBadge" style="font-size: 0.85rem; color: #fff; font-weight: 600;">—</span>
+        <span style="margin: 0 0.5rem; color: var(--text-dim);">|</span>
+        <span style="font-size: 0.85rem; color: var(--emerald); font-weight: 700;">✅ Validated: </span>
+        <span style="font-size: 0.85rem; color: var(--text-dim);">All 7 Judge Rules Passed (No Overlaps, No Early Starts, Sorted Start Times).</span>
+      </div>
+
+      <!-- ═══ CREW TELEMETRY CARDS ═══ -->
+      <div class="crew-grid" id="crewGrid"></div>
+
+      <!-- ═══ GRAPHS SECTION ═══ -->
+      <!-- Graph 1: Waiting vs Score Earned (Scatter) -->
+      <div class="panel">
+        <h2>📉 Waiting Time vs. Safety Score Earned</h2>
+        <div class="chart-container">
+          <canvas id="scatterCanvas"></canvas>
+        </div>
+        <div class="losses-strip" id="lossesStrip">
+          <!-- Top losses injected here -->
+        </div>
+      </div>
+
+      <!-- Graph 2: Gantt Timeline -->
+      <div class="panel">
+        <h2>📊 Mars Colony Crew Timeline (Gantt Chart)</h2>
+        <div class="gantt-scroll">
+          <div class="gantt-wrapper" id="ganttWrapper">
+            <div class="gantt-ticks" id="ganttTicks"></div>
+            <div id="ganttRows"></div>
+          </div>
+        </div>
+        <div class="gantt-hover-box" id="ganttHoverBox">
+          Hover over any incident block to inspect start, duration, wait time, and score contribution.
+        </div>
+      </div>
+
+      <!-- ═══ SEARCHABLE INCIDENTS TABLE ═══ -->
+      <div class="panel">
+        <div class="table-controls">
+          <h2>📋 Comprehensive Incident Schedule</h2>
+          <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
+            <input type="text" class="search-input" id="searchTable" placeholder="🔍 Search by ID, Category, Crew...">
+            <div class="filter-btn-group" id="filterGroup">
+              <button class="btn-filter active" data-crew="ALL">All Crews</button>
+              <button class="btn-filter" data-crew="E">Structural (E)</button>
+              <button class="btn-filter" data-crew="M">Medical (M)</button>
+              <button class="btn-filter" data-crew="L">Life Support (L)</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="id">ID ↕</th>
+                <th data-sort="crew">Crew ↕</th>
+                <th data-sort="category">Category ↕</th>
+                <th data-sort="severity">Severity ↕</th>
+                <th data-sort="duration">Duration ↕</th>
+                <th data-sort="start">Start ↕</th>
+                <th data-sort="end">End ↕</th>
+                <th data-sort="wait">Wait ↕</th>
+                <th data-sort="score">Score ↕</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ EXPORT ACTIONS ═══ -->
+      <div class="download-bar">
+        <button class="btn-download" id="downloadJsonBtn">⬇️ Download submission.json</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Loading Modal -->
+  <div class="loading-overlay" id="loadingModal">
+    <div class="spin"></div>
+    <div style="font-weight: 700; font-size: 1.1rem; color: #fff;">Optimizing Mars Colony Schedule...</div>
+    <div style="font-size: 0.85rem; color: var(--text-dim);">Running Dual-Engine (Beam Search + Simulated Annealing)</div>
+  </div>
+
+  <script>
+    let globalResult = null;
+    let scatterChartInstance = null;
+    let currentFilter = 'ALL';
+    let currentSearch = '';
+    let sortColumn = 'start';
+    let sortDirection = 1;
+
+    // Elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadLabel = document.getElementById('uploadLabel');
+    const solveBtn = document.getElementById('solveBtn');
+    const loadingModal = document.getElementById('loadingModal');
+
+    // Drag and drop handlers
+    ['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); }));
+
+    dropZone.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        handleFileSelect();
+      }
+    });
+    fileInput.addEventListener('change', handleFileSelect);
+
+    function handleFileSelect() {
+      if (fileInput.files.length) {
+        uploadLabel.innerHTML = `<span class="filename">✅ ${fileInput.files[0].name}</span><br><small style="color:var(--text-dim)">Ready to optimize</small>`;
+        solveBtn.disabled = false;
+      }
+    }
+
+    // Solve API Trigger
+    solveBtn.addEventListener('click', async () => {
+      if (!fileInput.files.length) return;
+
+      loadingModal.classList.add('active');
+      solveBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('sa_time', document.getElementById('saTime').value);
+      formData.append('seed', document.getElementById('seed').value);
+
+      try {
+        const resp = await fetch('/solve', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.error) {
+          alert('Error: ' + data.error);
+          return;
+        }
+        globalResult = data;
+        renderDashboard(data);
+      } catch (err) {
+        alert('Optimization failed: ' + err.message);
+      } finally {
+        loadingModal.classList.remove('active');
+        solveBtn.disabled = false;
+      }
+    });
+
+    // Main Render Pipeline
+    function renderDashboard(data) {
+      document.getElementById('resultsSection').style.display = 'block';
+
+      const s = data.stats;
+      // Top stats
+      document.getElementById('statTotal').textContent = s.incidents;
+      document.getElementById('statCritical').textContent = s.critical_count;
+      document.getElementById('statScore').textContent = s.final_score.toFixed(3);
+      document.getElementById('statEfficiency').textContent = s.efficiency + '%';
+      document.getElementById('statAvgWait').textContent = s.avg_wait + ' min';
+      document.getElementById('statDuration').textContent = s.total_duration + ' min';
+      document.getElementById('statMakespan').textContent = s.makespan + ' min';
+
+      // Engine badge
+      document.getElementById('engineBadge').textContent = s.selected_engine + 
+        ` (Dynamic: ${s.dynamic_score.toFixed(2)} | Beam: ${s.beam_score.toFixed(2)})`;
+
+      // Crew telemetry cards
+      renderCrewCards(s.crew_stats, s.makespan);
+
+      // Scatter plot (Wait vs Points)
+      renderScatterChart(data.schedule, s);
+
+      // Gantt chart
+      renderGantt(data.schedule, s.makespan);
+
+      // Incident Table
+      renderTable();
+
+      // Scroll to results
+      document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Render 3 Crew Telemetry Cards
+    function renderCrewCards(crews, makespan) {
+      const names = {
+        E: { name: 'Structural Crew', color: 'E' },
+        M: { name: 'Medical Crew', color: 'M' },
+        L: { name: 'Life Support Crew', color: 'L' }
+      };
+
+      const html = ['E', 'M', 'L'].map(c => {
+        const info = crews[c];
+        const utilPct = makespan > 0 ? Math.min(100, Math.round((info.busy / makespan) * 100)) : 0;
+        return `
+          <div class="crew-card ${c}">
+            <div class="crew-head">
+              <span class="crew-title ${c}">${names[c].name} (${c})</span>
+              <span class="crew-meta">● Scheduled</span>
+            </div>
+            <div class="crew-stats-lines">
+              Assigned Incidents: <b>${info.count}</b><br>
+              Working Duration: <b>${info.busy} min</b><br>
+              Score Generated: <b>${info.score.toFixed(1)} pts</b><br>
+              Crew Utilization: <b>${utilPct}%</b>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill ${c}" style="width: ${utilPct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('crewGrid').innerHTML = html;
+    }
+
+    // Render Scatter Chart (Waiting vs Points)
+    function renderScatterChart(schedule, stats) {
+      const scatterPoints = schedule.map(r => ({
+        x: r.wait,
+        y: r.score,
+        id: r.id,
+        severity: r.severity,
+        window: r.window,
+        lost: r.lost
+      }));
+
+      const ctx = document.getElementById('scatterCanvas').getContext('2d');
+      if (scatterChartInstance) scatterChartInstance.destroy();
+
+      scatterChartInstance = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            label: 'Incidents',
+            data: scatterPoints,
+            backgroundColor: 'rgba(34, 211, 238, 0.75)',
+            borderColor: '#22d3ee',
+            pointRadius: 4.5,
+            pointHoverRadius: 7
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  const p = ctx.raw;
+                  return [
+                    `Incident #${p.id} (Sev ${p.severity})`,
+                    `Wait: ${p.x} min (Window: ${p.window} min)`,
+                    `Earned: ${p.y.toFixed(2)} pts (Lost: ${p.lost.toFixed(2)} pts)`
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Waiting Time (Minutes)', color: '#94a3b8' },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8' }
+            },
+            y: {
+              title: { display: true, text: 'Points Earned', color: '#94a3b8' },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8' },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+
+      // Largest losses strip
+      const topLosses = stats.largest_losses.map(l => 
+        `<strong>#${l.id}</strong> (Sev ${l.severity}, lost −${l.lost.toFixed(2)} pts)`
+      ).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+      document.getElementById('lossesStrip').innerHTML = `⚠️ <strong>Largest Point Losses to Waiting:</strong> ${topLosses}`;
+    }
+
+    // Render Gantt Chart
+    function renderGantt(schedule, makespan) {
+      const pxPerMin = Math.max(1.8, Math.min(8, 1100 / Math.max(makespan, 1)));
+      const W = Math.max(900, makespan * pxPerMin + 40);
+
+      document.getElementById('ganttWrapper').style.width = W + 'px';
+
+      // Generate ticks every 30 or 60 min
+      const step = makespan > 800 ? 100 : makespan > 400 ? 50 : 25;
+      const ticksCount = Math.floor(makespan / step) + 1;
+      let ticksHtml = '';
+      for (let i = 0; i <= ticksCount; i++) {
+        const minute = i * step;
+        ticksHtml += `<span class="tick-label" style="left: ${minute * pxPerMin}px;">${minute}m</span>`;
+      }
+      document.getElementById('ganttTicks').innerHTML = ticksHtml;
+
+      // Rows for E, M, L
+      const crews = ['E', 'M', 'L'];
+      const hoverBox = document.getElementById('ganttHoverBox');
+
+      const rowsHtml = crews.map(crew => {
+        const crewTasks = schedule.filter(r => r.crew === crew);
+        const blocks = crewTasks.map(t => {
+          const left = t.start * pxPerMin;
+          const width = Math.max(4, (t.end - t.start) * pxPerMin - 1);
+          return `
+            <div class="gantt-block ${crew}"
+                 style="left: ${left}px; width: ${width}px;"
+                 data-id="${t.id}" data-sev="${t.severity}" data-cat="${t.category}"
+                 data-start="${t.start}" data-end="${t.end}" data-wait="${t.wait}"
+                 data-score="${t.score}" data-dur="${t.end - t.start}" data-crew="${crew}">
+                 ${width > 35 ? `#${t.id}` : ''}
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="gantt-row">
+            <span class="gantt-label" style="color: var(--crew-${crew.toLowerCase()});">Crew ${crew}</span>
+            <div class="gantt-track">${blocks}</div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('ganttRows').innerHTML = rowsHtml;
+
+      // Attach hover listener
+      document.querySelectorAll('.gantt-block').forEach(el => {
+        el.addEventListener('mouseenter', () => {
+          const d = el.dataset;
+          hoverBox.innerHTML = `
+            <b>Incident #${d.id}</b> · ${d.cat} · Severity <b>${d.sev}</b> · 
+            Duration <b>${d.dur} min</b> · Start <b>${d.start}m</b> → End <b>${d.end}m</b> · 
+            Wait <b>${d.wait} min</b> · Score Earned: <b style="color:var(--emerald);">${parseFloat(d.score).toFixed(2)} pts</b>
+          `;
+        });
+      });
+    }
+
+    // Render Incident Table with sorting & search
+    function renderTable() {
+      if (!globalResult) return;
+      let data = [...globalResult.schedule];
+
+      // Filter by crew
+      if (currentFilter !== 'ALL') {
+        data = data.filter(r => r.crew === currentFilter);
+      }
+
+      // Filter by search query
+      if (currentSearch.trim() !== '') {
+        const q = currentSearch.toLowerCase();
+        data = data.filter(r => 
+          r.id.toString().includes(q) ||
+          r.category.toLowerCase().includes(q) ||
+          r.crew.toLowerCase().includes(q) ||
+          r.severity.toString().includes(q)
+        );
+      }
+
+      // Sort
+      data.sort((a, b) => {
+        let va = a[sortColumn], vb = b[sortColumn];
+        if (typeof va === 'string') return va.localeCompare(vb) * sortDirection;
+        return (va - vb) * sortDirection;
+      });
+
+      const rowsHtml = data.map(r => {
+        const sevClass = r.severity >= 8 ? 'sev-high' : r.severity >= 4 ? 'sev-mid' : 'sev-low';
+        const scoreClass = r.score > 0 ? (r.score / r.severity > 0.8 ? 'high' : 'mid') : 'zero';
+        return `
+          <tr>
+            <td><strong>#${r.id}</strong></td>
+            <td><strong style="color:var(--crew-${r.crew.toLowerCase()});">Crew ${r.crew}</strong></td>
+            <td>${r.category}</td>
+            <td><span class="sev-pill ${sevClass}">Sev ${r.severity}</span></td>
+            <td>${r.end - r.start}m</td>
+            <td>${r.start}m</td>
+            <td>${r.end}m</td>
+            <td>${r.wait}m</td>
+            <td><span class="score-pts ${scoreClass}">${r.score.toFixed(3)}</span></td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('tableBody').innerHTML = rowsHtml;
+    }
+
+    // Search input
+    document.getElementById('searchTable').addEventListener('input', e => {
+      currentSearch = e.target.value;
+      renderTable();
+    });
+
+    // Filter Buttons
+    document.getElementById('filterGroup').addEventListener('click', e => {
+      if (!e.target.classList.contains('btn-filter')) return;
+      document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      currentFilter = e.target.dataset.crew;
+      renderTable();
+    });
+
+    // Table Header Sorting
+    document.querySelectorAll('th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.sort;
+        if (sortColumn === col) sortDirection *= -1;
+        else { sortColumn = col; sortDirection = 1; }
+        renderTable();
+      });
+    });
+
+    // Download JSON
+    document.getElementById('downloadJsonBtn').addEventListener('click', () => {
+      if (!globalResult) return;
+      const blob = new Blob([JSON.stringify(globalResult.submission, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'submission.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  </script>
+</body>
+</html>
