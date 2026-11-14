@@ -189,9 +189,10 @@ def solve_beam_engine(incidents):
         w = 40 if n <= 60 else 10 if n <= 300 else 2
         b = _beam_search(jobs, w)
         cands.append(("beam", b))
+        if n <= 1000:
+            cands.append(("greedy+local", _beam_local_search(cands[0][1], passes=6)))
         if n <= 300:
             cands.append(("beam+local", _beam_local_search(b)))
-            cands.append(("greedy+local", _beam_local_search(cands[0][1])))
 
         _, best_order = max(cands, key=lambda c: _beam_simulate(c[1])[0])
         sc, res = _beam_simulate(best_order)
@@ -211,9 +212,9 @@ def solve_beam_engine(incidents):
 # ═════════════════════════════════════════════════════════════════════
 # STRATEGY 2: DYNAMIC PRIORITY DISPATCH WITH ZERO-POINT PARKING & SA
 # ═════════════════════════════════════════════════════════════════════
-def simulate_dynamic(inc_list, w, mis):
+def simulate_dynamic(inc_list, w, mis, arrival_order=None):
     n = len(inc_list)
-    order = sorted(range(n), key=lambda i: inc_list[i]["arrival"])
+    order = arrival_order if arrival_order is not None else sorted(range(n), key=lambda i: inc_list[i]["arrival"])
     free = {c: 0 for c in CREWS}
     pending = []
     dead = []
@@ -286,6 +287,7 @@ def simulate_dynamic(inc_list, w, mis):
 
 def solve_dynamic_engine(incidents, target_iters=8000, seed=42):
     n = len(incidents)
+    arrival_order = sorted(range(n), key=lambda i: incidents[i]["arrival"])
     candidate_mis = [0.15, 0.25, 0.40, 0.55, 0.70, 0.85]
     candidate_weight_bases = [
         [1.0] * n,
@@ -302,7 +304,7 @@ def solve_dynamic_engine(incidents, target_iters=8000, seed=42):
 
     for mis in candidate_mis:
         for base_w in candidate_weight_bases:
-            sc, res = simulate_dynamic(incidents, base_w, mis)
+            sc, res = simulate_dynamic(incidents, base_w, mis, arrival_order)
             if sc > best_score:
                 best_score = sc
                 best_weights = list(base_w)
@@ -327,7 +329,7 @@ def solve_dynamic_engine(incidents, target_iters=8000, seed=42):
             idx = rnd.randrange(n)
             nw[idx] = min(60.0, max(0.01, nw[idx] * rnd.uniform(0.35, 2.6)))
 
-        s, r = simulate_dynamic(incidents, nw, nm)
+        s, r = simulate_dynamic(incidents, nw, nm, arrival_order)
         if s >= cur_s:
             cur_w, cur_m, cur_s = nw, nm, s
             if s > best_score:
